@@ -153,130 +153,266 @@ Learn and master TDD (Test-Driven Development), unit testing, integration testin
 
 ---
 
-## 📚 Week 1: TDD + Unit Testing Fundamentals
+# 📘 Project Document: TDD Development – Mastering Testing & Observability in ASP.NET Core
 
-- **What is TDD**: Red → Green → Refactor
-- **What is a Unit Test**: A fast, isolated test of business logic
-- **Tools**: xUnit, NUnit, MSTest
-- **Naming Convention**: `MethodName_StateUnderTest_ExpectedResult`
-
-### 🧪 Example:
-```csharp
-Assert.Equal(4, calculator.Add(2, 2));
-```
+## 🎯 Objective
+Learn and master TDD (Test-Driven Development), unit testing, integration testing, and observability for features like repositories with multiple dependencies in ASP.NET Core.
 
 ---
 
-## 🛠️ Week 2: Mocking & Dependency Injection
+## 🧭 Course Roadmap with Step-by-Step Implementation
 
-- **Goal**: Isolate test targets by mocking dependencies
-- **Tools**: Moq or NSubstitute
-- **Test doubles**: Mocks, stubs, fakes
+### Week 1: TDD + Unit Testing Fundamentals
 
-### 🧪 Example:
-```csharp
-var mockRepo = new Mock<IOrderRepository>();
-mockRepo.Setup(x => x.GetById(1)).Returns(new Order { Id = 1 });
-```
+#### ✅ What to Learn
+- Red → Green → Refactor cycle
+- What is a unit test?
+- Using `xUnit` test framework
+
+#### 🛠 How to Implement
+1. **Create Test Project**:
+   ```bash
+   dotnet new xunit -n MyApp.Tests
+   dotnet add reference ../MyApp.Core
+   ```
+
+2. **Add a Class to Test** (in `MyApp.Core`):
+   ```csharp
+   public class Calculator
+   {
+       public int Add(int a, int b) => a + b;
+   }
+   ```
+
+3. **Write a Failing Test First** (in `MyApp.Tests`):
+   ```csharp
+   public class CalculatorTests
+   {
+       [Fact]
+       public void Add_TwoNumbers_ReturnsSum()
+       {
+           var calc = new Calculator();
+           var result = calc.Add(2, 2);
+           Assert.Equal(5, result); // Wrong on purpose
+       }
+   }
+   ```
+
+4. **Make It Pass**:
+   ```csharp
+   Assert.Equal(4, result); // Corrected
+   ```
+
+#### 💡 Best Practices
+- Write minimal code to pass the test
+- Refactor after test passes
+
+#### ⚠️ Watch Out
+- Avoid testing implementation details
+- Tests should not depend on order of execution
+
+#### 🔗 Related Topics
+- AAA pattern (Arrange-Act-Assert)
+- Naming conventions for tests
 
 ---
 
-## 🔧 Week 3: Testing ASP.NET Core Controllers
+### Week 2: Mocking & Dependency Injection
 
-- **Test**: HTTP response types, status codes, data
-- **How**: Inject mocks into controller via DI
+#### ✅ What to Learn
+- How to isolate code with mocks
+- Using `Moq` to fake dependencies
 
-### 🧪 Example:
-```csharp
-[Fact]
-public async Task GetOrder_ReturnsOk()
-{
-    var mock = new Mock<IOrderService>();
-    mock.Setup(x => x.GetById(1)).ReturnsAsync(new OrderDto());
+#### 🛠 How to Implement
+1. **Create Interface + Class**:
+   ```csharp
+   public interface IOrderRepository
+   {
+       Order GetById(int id);
+   }
 
-    var controller = new OrdersController(mock.Object);
-    var result = await controller.Get(1);
+   public class OrderService
+   {
+       private readonly IOrderRepository _repo;
+       public OrderService(IOrderRepository repo) => _repo = repo;
+       public Order Get(int id) => _repo.GetById(id);
+   }
+   ```
 
-    Assert.IsType<OkObjectResult>(result);
-}
-```
+2. **Test with Moq**:
+   ```csharp
+   var mock = new Mock<IOrderRepository>();
+   mock.Setup(r => r.GetById(1)).Returns(new Order { Id = 1 });
+   var service = new OrderService(mock.Object);
+   var result = service.Get(1);
+   Assert.Equal(1, result.Id);
+   ```
+
+#### 💡 Best Practices
+- Use `Setup` for expected behavior
+- Verify with `mock.Verify()` if needed
+
+#### ⚠️ Watch Out
+- Don’t overuse mocks for everything
+- Avoid mocking concrete classes
+
+#### 🔗 Related Topics
+- Stub vs Mock vs Fake
+- AutoFixture for auto-data generation
 
 ---
 
-## 🧠 Week 4: Testing Application Services
+### Week 3: Testing ASP.NET Core Controllers
 
-- **Test services**: Validate business logic
-- **Mock**: Repositories, loggers, other services
+#### ✅ What to Learn
+- Unit testing controllers that use DI
+
+#### 🛠 How to Implement
+1. **Controller**:
+   ```csharp
+   public class OrdersController : ControllerBase
+   {
+       private readonly IOrderService _service;
+       public OrdersController(IOrderService service) => _service = service;
+
+       [HttpGet("{id}")]
+       public IActionResult Get(int id)
+       {
+           var order = _service.GetById(id);
+           return Ok(order);
+       }
+   }
+   ```
+
+2. **Test**:
+   ```csharp
+   var mock = new Mock<IOrderService>();
+   mock.Setup(s => s.GetById(1)).Returns(new OrderDto { Id = 1 });
+   var controller = new OrdersController(mock.Object);
+   var result = controller.Get(1);
+   var ok = Assert.IsType<OkObjectResult>(result);
+   Assert.Equal(1, ((OrderDto)ok.Value).Id);
+   ```
+
+#### 💡 Best Practices
+- Test response types and content
+- Use `ObjectResult` and `StatusCodeResult` types
+
+#### ⚠️ Watch Out
+- Avoid testing routing/DI — that’s for integration tests
+
+#### 🔗 Related Topics
+- ActionResult<T>
+- FluentAssertions for readability
 
 ---
 
-## 🗄️ Week 5: Testing Repositories
+### Week 4: Testing Services
 
-- **Tools**: EF Core InMemory provider
-- **Why**: Verify DB logic with real DBContext
+#### ✅ What to Learn
+- How to test services in isolation from controllers/repos
 
-### 🧪 Example:
-```csharp
-var options = new DbContextOptionsBuilder<AppDbContext>()
-    .UseInMemoryDatabase("TestDb")
-    .Options;
-```
+#### 🛠 How to Implement
+1. **Service**:
+   ```csharp
+   public class DiscountService
+   {
+       public decimal ApplyDiscount(decimal price, decimal discountPercent)
+       {
+           return price - (price * discountPercent / 100);
+       }
+   }
+   ```
+
+2. **Test**:
+   ```csharp
+   [Fact]
+   public void ApplyDiscount_ValidInput_ReturnsDiscountedPrice()
+   {
+       var service = new DiscountService();
+       var result = service.ApplyDiscount(100, 10);
+       Assert.Equal(90, result);
+   }
+   ```
 
 ---
 
-## 🌐 Week 6: Integration Testing
+### Week 5: Testing Repositories (EF Core)
 
-- **Tools**: WebApplicationFactory<T>, TestServer
-- **Goal**: Test full HTTP pipeline (routing, DI, controllers)
+#### ✅ What to Learn
+- Use `InMemoryDatabase` to test EF logic
 
-### 🧪 Example:
+#### 🛠 How to Implement
+1. **Setup DbContext**:
+   ```csharp
+   var options = new DbContextOptionsBuilder<AppDbContext>()
+       .UseInMemoryDatabase("TestDb")
+       .Options;
+
+   var context = new AppDbContext(options);
+   context.Orders.Add(new Order { Id = 1 });
+   context.SaveChanges();
+   ```
+
+2. **Test Repository**:
+   ```csharp
+   var repo = new OrderRepository(context);
+   var order = repo.GetById(1);
+   Assert.NotNull(order);
+   ```
+
+---
+
+### Week 6: Integration Testing
+
+#### ✅ What to Learn
+- Use `WebApplicationFactory` to test entire HTTP pipeline
+
+#### 🛠 How to Implement
 ```csharp
 var factory = new WebApplicationFactory<Program>();
 var client = factory.CreateClient();
-var response = await client.GetAsync("/api/orders");
+var response = await client.GetAsync("/api/orders/1");
+response.EnsureSuccessStatusCode();
 ```
 
 ---
 
-## 📈 Week 7: Observability – Logs, Metrics, Health
+### Week 7: Observability
 
-- **Tools**: Serilog, Application Insights
-- **Structured logging**: Add context and correlation
-- **Health Checks**: `/health` endpoint
-- **Metrics**: Integrate Prometheus, OpenTelemetry, Seq
+#### ✅ What to Learn
+- Logging, metrics, and health checks
 
----
-
-## 🧪 Week 8: Final Project – Order Feature via TDD
-
-| Task                           | Deliverable                                  |
-|--------------------------------|----------------------------------------------|
-| Red test first                 | Write failing test for new Order feature     |
-| Add minimal code              | Implement logic to make it pass              |
-| Refactor                      | Improve structure without breaking tests      |
-| Add integration test          | Verify full system behavior                  |
-| Log + monitor                 | Add Serilog and health endpoints             |
-
----
-
-## 🧰 Tooling
-
-- **xUnit/NUnit**: Unit testing frameworks
-- **Moq/NSubstitute**: Mocking libraries
-- **FluentAssertions**: Cleaner, readable assertions
-- **Serilog**: Structured, pluggable logging
-- **WebApplicationFactory**: Integration testing
-- **Testcontainers (optional)**: Docker-based integration testing
+#### 🛠 How to Implement
+1. **Add Serilog**:
+   ```csharp
+   Log.Logger = new LoggerConfiguration()
+       .WriteTo.Console()
+       .CreateLogger();
+   ```
+2. **Health Check Endpoint**:
+   ```csharp
+   services.AddHealthChecks();
+   app.MapHealthChecks("/health");
+   ```
 
 ---
 
-## ✅ By the End of This Course, You'll:
+### Week 8: Final Project – Order Feature via TDD
 
-- Understand and practice **Test-Driven Development**
-- Unit test **services, controllers, repositories**
-- Write integration tests with **real DI and middleware**
-- Make your API **observable, resilient, and production-grade**
+#### ✅ Step-by-Step
+1. Write failing test: `GetById_ShouldReturnOrder`
+2. Implement only enough logic to pass
+3. Add repo mock + controller test
+4. Add integration test for `/api/orders/{id}`
+5. Add structured logs in controller + service
+6. Add `/health` and ensure logs/metrics emit properly
 
-Let's build it test-first — and make it bulletproof. 💥
+---
 
+## 🎓 Outcome
+- You’ll be confident writing testable ASP.NET Core code
+- You’ll have real-world examples for repositories, services, and controllers
+- You’ll understand TDD from red → green → refactor
+- You’ll build observable, test-driven, maintainable software 💪
 
