@@ -131,4 +131,152 @@ With these changes, your API will:
 - Handle high load with less CPU/thread pressure
 - Be observable, testable, and production-ready
 
+# 📘 Project Document: TDD Development – Mastering Testing & Observability in ASP.NET Core
+
+## 🎯 Objective
+Learn and master TDD (Test-Driven Development), unit testing, integration testing, and observability for features like repositories with multiple dependencies in ASP.NET Core.
+
+---
+
+## 🧭 Course Roadmap
+
+| Week | Focus Area                                 | Outcome                                                |
+|------|---------------------------------------------|--------------------------------------------------------|
+| 1️⃣   | TDD Basics + Unit Testing Fundamentals      | Understand red-green-refactor, test structure          |
+| 2️⃣   | Mocking + Dependency Injection in Testing   | Master Moq/NSubstitute + mocking services/repos        |
+| 3️⃣   | Testing ASP.NET Core Controllers            | Unit test controllers with DI dependencies             |
+| 4️⃣   | Testing Business Logic + Services           | Test services independently of DB or web               |
+| 5️⃣   | Testing Repositories (EF Core, external)    | Unit test with in-memory DB or fakes                   |
+| 6️⃣   | Integration Testing + In-Memory Web Server  | Test API endpoints + HTTP pipeline with real data      |
+| 7️⃣   | Observability (Logging, Metrics, Tracing)   | Add and verify structured logs, health checks, metrics |
+| 8️⃣   | Final Project: TDD for Order Feature        | Build full feature with TDD from scratch               |
+
+---
+
+## 📚 Week 1: TDD + Unit Testing Fundamentals
+
+- **What is TDD**: Red → Green → Refactor
+- **What is a Unit Test**: A fast, isolated test of business logic
+- **Tools**: xUnit, NUnit, MSTest
+- **Naming Convention**: `MethodName_StateUnderTest_ExpectedResult`
+
+### 🧪 Example:
+```csharp
+Assert.Equal(4, calculator.Add(2, 2));
+```
+
+---
+
+## 🛠️ Week 2: Mocking & Dependency Injection
+
+- **Goal**: Isolate test targets by mocking dependencies
+- **Tools**: Moq or NSubstitute
+- **Test doubles**: Mocks, stubs, fakes
+
+### 🧪 Example:
+```csharp
+var mockRepo = new Mock<IOrderRepository>();
+mockRepo.Setup(x => x.GetById(1)).Returns(new Order { Id = 1 });
+```
+
+---
+
+## 🔧 Week 3: Testing ASP.NET Core Controllers
+
+- **Test**: HTTP response types, status codes, data
+- **How**: Inject mocks into controller via DI
+
+### 🧪 Example:
+```csharp
+[Fact]
+public async Task GetOrder_ReturnsOk()
+{
+    var mock = new Mock<IOrderService>();
+    mock.Setup(x => x.GetById(1)).ReturnsAsync(new OrderDto());
+
+    var controller = new OrdersController(mock.Object);
+    var result = await controller.Get(1);
+
+    Assert.IsType<OkObjectResult>(result);
+}
+```
+
+---
+
+## 🧠 Week 4: Testing Application Services
+
+- **Test services**: Validate business logic
+- **Mock**: Repositories, loggers, other services
+
+---
+
+## 🗄️ Week 5: Testing Repositories
+
+- **Tools**: EF Core InMemory provider
+- **Why**: Verify DB logic with real DBContext
+
+### 🧪 Example:
+```csharp
+var options = new DbContextOptionsBuilder<AppDbContext>()
+    .UseInMemoryDatabase("TestDb")
+    .Options;
+```
+
+---
+
+## 🌐 Week 6: Integration Testing
+
+- **Tools**: WebApplicationFactory<T>, TestServer
+- **Goal**: Test full HTTP pipeline (routing, DI, controllers)
+
+### 🧪 Example:
+```csharp
+var factory = new WebApplicationFactory<Program>();
+var client = factory.CreateClient();
+var response = await client.GetAsync("/api/orders");
+```
+
+---
+
+## 📈 Week 7: Observability – Logs, Metrics, Health
+
+- **Tools**: Serilog, Application Insights
+- **Structured logging**: Add context and correlation
+- **Health Checks**: `/health` endpoint
+- **Metrics**: Integrate Prometheus, OpenTelemetry, Seq
+
+---
+
+## 🧪 Week 8: Final Project – Order Feature via TDD
+
+| Task                           | Deliverable                                  |
+|--------------------------------|----------------------------------------------|
+| Red test first                 | Write failing test for new Order feature     |
+| Add minimal code              | Implement logic to make it pass              |
+| Refactor                      | Improve structure without breaking tests      |
+| Add integration test          | Verify full system behavior                  |
+| Log + monitor                 | Add Serilog and health endpoints             |
+
+---
+
+## 🧰 Tooling
+
+- **xUnit/NUnit**: Unit testing frameworks
+- **Moq/NSubstitute**: Mocking libraries
+- **FluentAssertions**: Cleaner, readable assertions
+- **Serilog**: Structured, pluggable logging
+- **WebApplicationFactory**: Integration testing
+- **Testcontainers (optional)**: Docker-based integration testing
+
+---
+
+## ✅ By the End of This Course, You'll:
+
+- Understand and practice **Test-Driven Development**
+- Unit test **services, controllers, repositories**
+- Write integration tests with **real DI and middleware**
+- Make your API **observable, resilient, and production-grade**
+
+Let's build it test-first — and make it bulletproof. 💥
+
 
