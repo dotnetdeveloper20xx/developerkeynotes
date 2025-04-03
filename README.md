@@ -2,7 +2,7 @@
 Some regular stuff a developer will face in their daily jobl
 
 
-# 🧠 Project Document: Super Charge a Slow API Response
+# 🧠 Super Charge a Slow API Response
 
 ## 🎯 Goal
 Turn a sluggish ASP.NET Core Web API into a fast, scalable, and responsive API even when it relies on slow external services.
