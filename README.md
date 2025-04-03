@@ -416,3 +416,207 @@ response.EnsureSuccessStatusCode();
 - You’ll understand TDD from red → green → refactor
 - You’ll build observable, test-driven, maintainable software 💪
 
+# 🚀 TDD Final Project – Order Feature
+
+## 🎯 Goal
+Demonstrate full TDD mastery by implementing an end-to-end **Order Management** feature in ASP.NET Core using:
+- ✅ Unit Testing
+- ✅ Mocking & DI
+- ✅ Integration Testing
+- ✅ Observability (logging, health)
+
+---
+
+## 🧱 Project Structure
+
+```
+/OrderApi
+├── Controllers/
+│   └── OrdersController.cs
+├── Services/
+│   └── OrderService.cs
+├── Repositories/
+│   └── OrderRepository.cs
+├── Domain/
+│   └── Order.cs
+├── Program.cs
+
+/OrderApi.Tests
+├── Unit/
+│   └── OrderServiceTests.cs
+│   └── OrdersControllerTests.cs
+├── Integration/
+│   └── OrderEndpointsTests.cs
+```
+
+---
+
+## 🧪 Section 1: Unit Testing
+
+### 1️⃣ `OrderServiceTests.cs`
+```csharp
+[Fact]
+public void CalculateTotal_WhenCalled_ReturnsExpectedSum()
+{
+    var service = new OrderService(null!);
+    var total = service.CalculateTotal(100, 5);
+    Assert.Equal(105, total);
+}
+```
+
+### 2️⃣ Testing logic with mocked repository
+```csharp
+[Fact]
+public void GetOrder_ReturnsCorrectOrder()
+{
+    var mockRepo = new Mock<IOrderRepository>();
+    mockRepo.Setup(x => x.GetById(1)).Returns(new Order { Id = 1 });
+    var service = new OrderService(mockRepo.Object);
+    var result = service.GetOrder(1);
+    Assert.Equal(1, result.Id);
+}
+```
+
+### 3️⃣ Test business rule logic
+```csharp
+[Fact]
+public void IsPremiumOrder_WhenAmountOver100_ReturnsTrue()
+{
+    var service = new OrderService(null!);
+    var isPremium = service.IsPremium(150);
+    Assert.True(isPremium);
+}
+```
+
+---
+
+## 🤖 Section 2: Mocking + DI
+
+### 1️⃣ Controller test with mocked service
+```csharp
+[Fact]
+public async Task GetOrder_ReturnsOk()
+{
+    var mockService = new Mock<IOrderService>();
+    mockService.Setup(x => x.GetOrder(1)).Returns(new OrderDto { Id = 1 });
+    var controller = new OrdersController(mockService.Object);
+    var result = controller.Get(1);
+    var ok = Assert.IsType<OkObjectResult>(result);
+    Assert.Equal(1, ((OrderDto)ok.Value!).Id);
+}
+```
+
+### 2️⃣ Verify method call
+```csharp
+[Fact]
+public void PlaceOrder_CallsRepositoryOnce()
+{
+    var mockRepo = new Mock<IOrderRepository>();
+    var service = new OrderService(mockRepo.Object);
+    service.PlaceOrder(new Order { Id = 2 });
+    mockRepo.Verify(r => r.Save(It.Is<Order>(o => o.Id == 2)), Times.Once);
+}
+```
+
+### 3️⃣ Mock failed dependency
+```csharp
+[Fact]
+public void GetOrder_RepoThrows_LogsError()
+{
+    var logger = new Mock<ILogger<OrderService>>();
+    var repo = new Mock<IOrderRepository>();
+    repo.Setup(x => x.GetById(It.IsAny<int>())).Throws(new Exception("DB fail"));
+    var service = new OrderService(repo.Object, logger.Object);
+
+    Assert.Throws<Exception>(() => service.GetOrder(1));
+    logger.Verify(l => l.Log(
+        LogLevel.Error,
+        It.IsAny<EventId>(),
+        It.Is<It.IsAnyType>((v, _) => v.ToString()!.Contains("DB fail")),
+        It.IsAny<Exception>(),
+        It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+    ));
+}
+```
+
+---
+
+## 🔌 Section 3: Integration Testing
+
+### Setup
+```csharp
+var app = new WebApplicationFactory<Program>();
+var client = app.CreateClient();
+```
+
+### 1️⃣ GET /orders/{id}
+```csharp
+[Fact]
+public async Task GetOrder_ReturnsOrder()
+{
+    var response = await client.GetAsync("/api/orders/1");
+    response.EnsureSuccessStatusCode();
+    var content = await response.Content.ReadAsStringAsync();
+    Assert.Contains("\"id\":1", content);
+}
+```
+
+### 2️⃣ POST /orders
+```csharp
+[Fact]
+public async Task CreateOrder_ReturnsCreated()
+{
+    var order = new StringContent("{\"amount\": 100}", Encoding.UTF8, "application/json");
+    var response = await client.PostAsync("/api/orders", order);
+    Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+}
+```
+
+### 3️⃣ Health check endpoint
+```csharp
+[Fact]
+public async Task HealthCheck_ReturnsHealthy()
+{
+    var response = await client.GetAsync("/health");
+    response.EnsureSuccessStatusCode();
+}
+```
+
+---
+
+## 📈 Section 4: Observability
+
+### 1️⃣ Serilog structured logging
+```csharp
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console()
+    .WriteTo.File("logs/orders.log")
+    .CreateLogger();
+```
+
+### 2️⃣ Logging in controller
+```csharp
+_logger.LogInformation("Getting order {id}", id);
+```
+
+### 3️⃣ Health check setup
+```csharp
+builder.Services.AddHealthChecks();
+app.MapHealthChecks("/health");
+```
+
+---
+
+## 🧾 Summary
+| Concept          | Example                         |
+|------------------|----------------------------------|
+| Unit Test        | `OrderServiceTests`             |
+| Mocking + DI     | `OrdersControllerTests`         |
+| Integration Test | `OrderEndpointsTests`           |
+| Logging          | Serilog + controller injection  |
+| Health           | `/health` endpoint with check   |
+
+✅ This project demonstrates how to write scalable, test-first, observable ASP.NET Core applications with TDD discipline.
+
+Let’s commit it and test with confidence! ✅
+
