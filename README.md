@@ -1412,6 +1412,249 @@ public class OrdersController : ControllerBase
 - Great for **retry logic**, **dead-letter queues**, and **message sessions**
 
 
+# Azure Service Bus Queue and Topic CRUD in ASP.NET Core
+
+## 🎯 Objective
+This project demonstrates **full CRUD operations** for both **Azure Service Bus Queues** and **Topics + Subscriptions** in an ASP.NET Core Web API using best practices. We also explain the **what**, **why**, and **how** of each component.
+
+---
+
+## 🔍 Queue vs Topic: What's the Difference?
+| Feature                | Queue                          | Topic + Subscriptions                       |
+|------------------------|----------------------------------|---------------------------------------------|
+| Pattern                | Point-to-point                   | Publish/Subscribe                           |
+| Message Delivery       | One consumer                     | One or many independent subscribers         |
+| Use Case               | Order processing, async tasks    | Fan-out events (e.g., notifications)        |
+| Dead Letter Queue      | ✅                               | ✅                                           |
+| Advanced Filters       | ❌                               | ✅ (SQL filter rules on subscription)        |
+
+### 📦 Analogy:
+- **Queue**: Like a ticket line—one person picks up the message.
+- **Topic**: Like an announcement—multiple people (subscribers) hear it.
+
+---
+
+## 🧱 Project Structure
+```
+/Services
+  ├── QueueService.cs
+  └── TopicService.cs
+/Controllers
+  ├── QueueController.cs
+  └── TopicController.cs
+Program.cs
+appsettings.json
+```
+
+---
+
+## 🧪 Prerequisites
+```bash
+Install-Package Azure.Messaging.ServiceBus
+```
+
+---
+
+## 📄 appsettings.json
+```json
+{
+  "AzureServiceBus": {
+    "ConnectionString": "<your-connection-string>",
+    "QueueName": "ordersqueue",
+    "TopicName": "orderstopic"
+  }
+}
+```
+
+---
+
+## 📁 QueueService.cs
+```csharp
+public class QueueService
+{
+    private readonly ServiceBusClient _client;
+    private readonly ServiceBusSender _sender;
+    private readonly string _queueName;
+
+    public QueueService(IConfiguration config)
+    {
+        _queueName = config["AzureServiceBus:QueueName"];
+        _client = new ServiceBusClient(config["AzureServiceBus:ConnectionString"]);
+        _sender = _client.CreateSender(_queueName);
+    }
+
+    public async Task SendMessageAsync(string message)
+    {
+        var msg = new ServiceBusMessage(message);
+        await _sender.SendMessageAsync(msg);
+    }
+
+    public async Task ReceiveMessagesAsync()
+    {
+        var receiver = _client.CreateReceiver(_queueName);
+        var messages = await receiver.ReceiveMessagesAsync(maxMessages: 10);
+
+        foreach (var msg in messages)
+        {
+            Console.WriteLine($"Queue Message: {msg.Body}");
+            await receiver.CompleteMessageAsync(msg);
+        }
+    }
+
+    public async Task DeleteQueueMessagesAsync()
+    {
+        var receiver = _client.CreateReceiver(_queueName);
+        var msgs = await receiver.ReceiveMessagesAsync(10);
+        foreach (var msg in msgs)
+        {
+            await receiver.CompleteMessageAsync(msg);
+        }
+    }
+}
+```
+
+---
+
+## 📁 TopicService.cs
+```csharp
+public class TopicService
+{
+    private readonly ServiceBusClient _client;
+    private readonly ServiceBusSender _sender;
+    private readonly string _topicName;
+
+    public TopicService(IConfiguration config)
+    {
+        _topicName = config["AzureServiceBus:TopicName"];
+        _client = new ServiceBusClient(config["AzureServiceBus:ConnectionString"]);
+        _sender = _client.CreateSender(_topicName);
+    }
+
+    public async Task PublishMessageAsync(string message)
+    {
+        var msg = new ServiceBusMessage(message);
+        await _sender.SendMessageAsync(msg);
+    }
+
+    public async Task ReceiveFromSubscriptionAsync(string subscriptionName)
+    {
+        var receiver = _client.CreateReceiver(_topicName, subscriptionName);
+        var messages = await receiver.ReceiveMessagesAsync(maxMessages: 10);
+
+        foreach (var msg in messages)
+        {
+            Console.WriteLine($"From {subscriptionName}: {msg.Body}");
+            await receiver.CompleteMessageAsync(msg);
+        }
+    }
+
+    public async Task DeleteMessagesFromSubscriptionAsync(string subscriptionName)
+    {
+        var receiver = _client.CreateReceiver(_topicName, subscriptionName);
+        var messages = await receiver.ReceiveMessagesAsync(10);
+        foreach (var msg in messages)
+        {
+            await receiver.CompleteMessageAsync(msg);
+        }
+    }
+}
+```
+
+---
+
+## 📁 QueueController.cs
+```csharp
+[ApiController]
+[Route("api/queue")]
+public class QueueController : ControllerBase
+{
+    private readonly QueueService _queueService;
+    public QueueController(QueueService queueService) => _queueService = queueService;
+
+    [HttpPost]
+    public async Task<IActionResult> Send(string message)
+    {
+        await _queueService.SendMessageAsync(message);
+        return Ok("Message sent to queue.");
+    }
+
+    [HttpGet("receive")]
+    public async Task<IActionResult> Receive()
+    {
+        await _queueService.ReceiveMessagesAsync();
+        return Ok("Messages received.");
+    }
+
+    [HttpDelete("clear")]
+    public async Task<IActionResult> Delete()
+    {
+        await _queueService.DeleteQueueMessagesAsync();
+        return Ok("Messages deleted from queue.");
+    }
+}
+```
+
+---
+
+## 📁 TopicController.cs
+```csharp
+[ApiController]
+[Route("api/topic")]
+public class TopicController : ControllerBase
+{
+    private readonly TopicService _topicService;
+    public TopicController(TopicService topicService) => _topicService = topicService;
+
+    [HttpPost]
+    public async Task<IActionResult> Publish(string message)
+    {
+        await _topicService.PublishMessageAsync(message);
+        return Ok("Message published to topic.");
+    }
+
+    [HttpGet("receive/{subscriber}")]
+    public async Task<IActionResult> Receive(string subscriber)
+    {
+        await _topicService.ReceiveFromSubscriptionAsync(subscriber);
+        return Ok("Messages received from topic subscription.");
+    }
+
+    [HttpDelete("clear/{subscriber}")]
+    public async Task<IActionResult> Delete(string subscriber)
+    {
+        await _topicService.DeleteMessagesFromSubscriptionAsync(subscriber);
+        return Ok("Messages deleted from subscription.");
+    }
+}
+```
+
+---
+
+## 🏁 Program.cs
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddSingleton<QueueService>();
+builder.Services.AddSingleton<TopicService>();
+builder.Services.AddControllers();
+
+var app = builder.Build();
+
+app.UseRouting();
+app.MapControllers();
+
+app.Run();
+```
+
+---
+
+## ✅ Summary
+- **Queues** = One sender → One receiver
+- **Topics** = One sender → Many subscribers
+- Use **Queue** for workflows, **Topic** for event-based architecture
+- This app follows **clean separation of concerns**, **best practices**, and **explains everything with What/Why/How**
+
+
 
 
 
