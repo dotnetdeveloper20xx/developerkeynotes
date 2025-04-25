@@ -798,5 +798,255 @@ class Program
 This simulation demonstrates how to manage shared resources using `SemaphoreSlim`, enforce execution limits, support priority queues, and handle task cancellation gracefully in C#. It reflects many real-world scenarios like database connection limits, checkout systems, or API throttling.
 
 
+# Azure Storage Services in an ASP.NET Core Application
+
+## Introduction
+This document explains how to integrate and use different Azure Storage Services (Blob, Table, Queue, File) in an ASP.NET Core application with full CRUD operations and secure access using SAS tokens. Each concept is explained using a shop analogy with the **What, Why, and How** approach.
+
+---
+
+## 1. Azure Blob Storage (Binary Large Objects)
+### What:
+Blob Storage is like a warehouse in your shop that stores large files like product images, videos, invoices, etc.
+
+### Why:
+Useful for unstructured binary or text data. Ideal for storing multimedia content or backups.
+
+### How:
+
+#### NuGet Package:
+```bash
+Install-Package Azure.Storage.Blobs
+```
+
+#### Upload, Read, Update, Delete Blob:
+```csharp
+public class BlobService
+{
+    private readonly BlobContainerClient _containerClient;
+
+    public BlobService(IConfiguration config)
+    {
+        var connectionString = config["AzureStorage:ConnectionString"];
+        var containerName = "productimages";
+        _containerClient = new BlobServiceClient(connectionString).GetBlobContainerClient(containerName);
+        _containerClient.CreateIfNotExists();
+    }
+
+    public async Task UploadAsync(string fileName, Stream content)
+    {
+        await _containerClient.UploadBlobAsync(fileName, content);
+    }
+
+    public async Task<string> ReadAsync(string fileName)
+    {
+        var blob = _containerClient.GetBlobClient(fileName);
+        var result = await blob.DownloadContentAsync();
+        return result.Value.Content.ToString();
+    }
+
+    public async Task UpdateAsync(string fileName, Stream content)
+    {
+        await _containerClient.UploadBlobAsync(fileName, content, overwrite: true);
+    }
+
+    public async Task DeleteAsync(string fileName)
+    {
+        await _containerClient.DeleteBlobIfExistsAsync(fileName);
+    }
+}
+```
+
+---
+
+## 2. Azure Table Storage
+### What:
+Table Storage is like a digital ledger in your shop to store user preferences, pricing metadata, and logs.
+
+### Why:
+Best for storing non-relational structured data with fast access via PartitionKey and RowKey.
+
+### How:
+
+#### NuGet Package:
+```bash
+Install-Package Azure.Data.Tables
+```
+
+#### Table Entity and CRUD:
+```csharp
+public class ProductMetadata : ITableEntity
+{
+    public string PartitionKey { get; set; } = "Product";
+    public string RowKey { get; set; } // ProductId
+    public string Category { get; set; }
+    public double Price { get; set; }
+    public DateTimeOffset? Timestamp { get; set; }
+    public ETag ETag { get; set; }
+}
+
+public class TableService
+{
+    private readonly TableClient _tableClient;
+
+    public TableService(IConfiguration config)
+    {
+        _tableClient = new TableServiceClient(config["AzureStorage:ConnectionString"]).GetTableClient("ProductMetadata");
+        _tableClient.CreateIfNotExists();
+    }
+
+    public async Task UpsertAsync(ProductMetadata metadata)
+    {
+        await _tableClient.UpsertEntityAsync(metadata);
+    }
+
+    public async Task<ProductMetadata> GetAsync(string id)
+    {
+        return await _tableClient.GetEntityAsync<ProductMetadata>("Product", id);
+    }
+
+    public async Task DeleteAsync(string id)
+    {
+        await _tableClient.DeleteEntityAsync("Product", id);
+    }
+}
+```
+
+---
+
+## 3. Azure Queue Storage
+### What:
+Queue Storage is like a task list clipboard in your shop used to process customer orders asynchronously.
+
+### Why:
+Helps in decoupling systems, message queuing, and background processing.
+
+### How:
+
+#### NuGet Package:
+```bash
+Install-Package Azure.Storage.Queues
+```
+
+#### CRUD Operations:
+```csharp
+public class QueueService
+{
+    private readonly QueueClient _queueClient;
+
+    public QueueService(IConfiguration config)
+    {
+        _queueClient = new QueueClient(config["AzureStorage:ConnectionString"], "orderqueue");
+        _queueClient.CreateIfNotExists();
+    }
+
+    public async Task EnqueueAsync(string message)
+    {
+        await _queueClient.SendMessageAsync(message);
+    }
+
+    public async Task<string> DequeueAsync()
+    {
+        var message = await _queueClient.ReceiveMessageAsync();
+        if (message.Value != null)
+        {
+            await _queueClient.DeleteMessageAsync(message.Value.MessageId, message.Value.PopReceipt);
+            return message.Value.MessageText;
+        }
+        return null;
+    }
+}
+```
+
+---
+
+## 4. Azure File Storage
+### What:
+File Storage is like a shared shop document cabinet for invoices, reports, or manuals accessible from multiple shop devices.
+
+### Why:
+Use it for legacy apps or when you need SMB access to shared files.
+
+### How:
+
+#### NuGet Package:
+```bash
+Install-Package Azure.Storage.Files.Shares
+```
+
+#### Upload and Download File:
+```csharp
+public class FileShareService
+{
+    private readonly ShareClient _shareClient;
+
+    public FileShareService(IConfiguration config)
+    {
+        _shareClient = new ShareClient(config["AzureStorage:ConnectionString"], "documentshare");
+        _shareClient.CreateIfNotExists();
+    }
+
+    public async Task UploadFileAsync(string fileName, byte[] content)
+    {
+        var dirClient = _shareClient.GetRootDirectoryClient();
+        var fileClient = dirClient.GetFileClient(fileName);
+        using var stream = new MemoryStream(content);
+        await fileClient.CreateAsync(content.Length);
+        await fileClient.UploadAsync(stream);
+    }
+
+    public async Task<string> DownloadFileAsync(string fileName)
+    {
+        var fileClient = _shareClient.GetRootDirectoryClient().GetFileClient(fileName);
+        var download = await fileClient.DownloadAsync();
+        using var reader = new StreamReader(download.Value.Content);
+        return await reader.ReadToEndAsync();
+    }
+}
+```
+
+---
+
+## 5. Generate SAS Token for Secure Access
+### What:
+SAS (Shared Access Signature) is like giving a customer a temporary key to access a private warehouse section in your shop.
+
+### Why:
+Secure way to give temporary, limited access without exposing your account keys.
+
+### How:
+
+#### Blob SAS Token Example:
+```csharp
+public string GenerateBlobSasToken(string blobName, string containerName, string connectionString)
+{
+    var blobServiceClient = new BlobServiceClient(connectionString);
+    var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+    var blobClient = containerClient.GetBlobClient(blobName);
+
+    var sasBuilder = new BlobSasBuilder()
+    {
+        BlobContainerName = containerName,
+        BlobName = blobName,
+        Resource = "b",
+        ExpiresOn = DateTimeOffset.UtcNow.AddHours(1)
+    };
+    sasBuilder.SetPermissions(BlobSasPermissions.Read);
+
+    var storageSharedKeyCredential = new StorageSharedKeyCredential(
+        blobServiceClient.AccountName,
+        connectionString.Split("AccountKey=")[1].Split(';')[0]);
+
+    var sasToken = sasBuilder.ToSasQueryParameters(storageSharedKeyCredential).ToString();
+    return blobClient.Uri + "?" + sasToken;
+}
+```
+
+---
+
+## Conclusion
+Using Azure Storage services in an ASP.NET Core app allows your "digital shop" to scale, store, and process data reliably and securely. Each service maps naturally to physical shop analogies—making it easier to design and manage scalable cloud applications.
+
+
 
 
