@@ -1252,6 +1252,166 @@ builder.Services.AddSingleton<EventHubSenderService>();
 
 ---
 
+# Azure Service Bus in an ASP.NET Core Online Bookstore Demo
+
+## 🧠 What is Azure Service Bus?
+**Azure Service Bus** is a fully managed enterprise messaging service for reliable message delivery between distributed applications and services. It supports **queues (point-to-point)** and **topics (publish/subscribe)** with features like:
+
+- **Message ordering (FIFO)**
+- **Duplicate detection**
+- **Dead-lettering**
+- **Sessions for stateful processing**
+- **Delayed and scheduled delivery**
+- **Transactions and retries**
+
+## 🔍 Why Use Azure Service Bus?
+Imagine you're running an **Online Bookstore**. Orders are placed, payments processed, notifications sent, and inventory updated. These systems must work together but should **not be tightly coupled**.
+
+**Azure Service Bus** acts as the communication backbone between these systems. If one system is down, the messages are held reliably until it’s available again.
+
+---
+
+## 🔁 Comparison with Other Azure Messaging Services
+| Feature | Azure Queue Storage | Azure Service Bus | Azure Event Grid | Azure Event Hubs |
+|--------|----------------------|-------------------|------------------|------------------|
+| **Type** | Basic queue | Enterprise messaging | Event routing | Data streaming |
+| **Delivery** | At least once | At least once, FIFO, durable | Push (event) | Real-time batch ingestion |
+| **Use Case** | Decoupled jobs | Business processes | Event-driven | IoT, telemetry |
+| **Advanced Features** | ❌ | ✅ Sessions, DLQ, Topics | ❌ | ❌ |
+
+---
+
+## 🛒 Online Bookstore Scenario
+- Customer places an order on the website
+- Order is added to Azure Service Bus Queue
+- Background service processes the order
+- Sends confirmation email and updates stock
+
+---
+
+## 🔧 How to Use Azure Service Bus in ASP.NET Core
+
+### Step 1: Install the NuGet Package
+```bash
+Install-Package Azure.Messaging.ServiceBus
+```
+
+### Step 2: Add Configuration
+```json
+// appsettings.json
+{
+  "AzureServiceBus": {
+    "ConnectionString": "<your-connection-string>",
+    "QueueName": "bookorders"
+  }
+}
+```
+
+### Step 3: Define the Order Message
+```csharp
+public class BookOrder
+{
+    public string OrderId { get; set; }
+    public string BookTitle { get; set; }
+    public string CustomerEmail { get; set; }
+    public int Quantity { get; set; }
+    public DateTime OrderDate { get; set; }
+}
+```
+
+### Step 4: Create Sender Service
+```csharp
+public class OrderSenderService
+{
+    private readonly ServiceBusSender _sender;
+
+    public OrderSenderService(IConfiguration config)
+    {
+        var client = new ServiceBusClient(config["AzureServiceBus:ConnectionString"]);
+        _sender = client.CreateSender(config["AzureServiceBus:QueueName"]);
+    }
+
+    public async Task SendOrderAsync(BookOrder order)
+    {
+        var message = new ServiceBusMessage(JsonSerializer.Serialize(order));
+        await _sender.SendMessageAsync(message);
+    }
+}
+```
+
+### Step 5: Create Processor Service
+```csharp
+public class OrderProcessorService : BackgroundService
+{
+    private readonly ServiceBusProcessor _processor;
+
+    public OrderProcessorService(IConfiguration config)
+    {
+        var client = new ServiceBusClient(config["AzureServiceBus:ConnectionString"]);
+        _processor = client.CreateProcessor(config["AzureServiceBus:QueueName"], new ServiceBusProcessorOptions());
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        _processor.ProcessMessageAsync += ProcessMessageHandler;
+        _processor.ProcessErrorAsync += ErrorHandler;
+        await _processor.StartProcessingAsync();
+    }
+
+    private async Task ProcessMessageHandler(ProcessMessageEventArgs args)
+    {
+        var body = args.Message.Body.ToString();
+        var order = JsonSerializer.Deserialize<BookOrder>(body);
+
+        Console.WriteLine($"📦 Order received for {order.BookTitle}, Quantity: {order.Quantity}");
+        await args.CompleteMessageAsync(args.Message);
+    }
+
+    private Task ErrorHandler(ProcessErrorEventArgs args)
+    {
+        Console.WriteLine($"Error: {args.Exception.Message}");
+        return Task.CompletedTask;
+    }
+}
+```
+
+### Step 6: Wire Services in Program.cs
+```csharp
+builder.Services.AddSingleton<OrderSenderService>();
+builder.Services.AddHostedService<OrderProcessorService>();
+```
+
+---
+
+## 🚀 Run the Demo
+1. Start the app
+2. Create a controller or endpoint to post an order:
+```csharp
+[ApiController]
+[Route("api/orders")]
+public class OrdersController : ControllerBase
+{
+    private readonly OrderSenderService _sender;
+    public OrdersController(OrderSenderService sender) => _sender = sender;
+
+    [HttpPost]
+    public async Task<IActionResult> PostOrder(BookOrder order)
+    {
+        await _sender.SendOrderAsync(order);
+        return Ok("Order sent!");
+    }
+}
+```
+
+---
+
+## ✅ Summary – Why Azure Service Bus?
+- Use **Service Bus** when reliability, ordering, and durability matter
+- Ideal for **business-critical workflows** like order processing
+- Allows **loose coupling** between services – improves scalability and maintainability
+- Great for **retry logic**, **dead-letter queues**, and **message sessions**
+
+
 
 
 
